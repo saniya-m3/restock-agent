@@ -233,6 +233,7 @@ export async function POST(req: NextRequest) {
     }));
 
     const MAX_ITERATIONS = 6;
+    const toolCallLog: { name: string; input: unknown }[] = [];
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       const response = await client.messages.create({
@@ -245,7 +246,10 @@ export async function POST(req: NextRequest) {
 
       if (response.stop_reason === "end_turn") {
         const text = response.content.find((b) => b.type === "text");
-        return NextResponse.json({ reply: (text as Anthropic.TextBlock)?.text ?? "" });
+        return NextResponse.json({
+          reply: (text as Anthropic.TextBlock)?.text ?? "",
+          tool_calls: toolCallLog,
+        });
       }
 
       if (response.stop_reason === "tool_use") {
@@ -257,6 +261,7 @@ export async function POST(req: NextRequest) {
             console.log(`[tool_call] ${block.name}`, JSON.stringify(block.input));
             const result = execTool(block.name, block.input as Record<string, unknown>);
             console.log(`[tool_result] ${block.name}`, result.slice(0, 300));
+            toolCallLog.push({ name: block.name, input: block.input });
             toolResults.push({ type: "tool_result", tool_use_id: block.id, content: result });
           }
         }
@@ -270,6 +275,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       reply: "I wasn't able to complete that request. Please try again or ask to speak with a human.",
+      tool_calls: toolCallLog,
     });
   } catch (err) {
     console.error("CHAT ERROR:", err);
